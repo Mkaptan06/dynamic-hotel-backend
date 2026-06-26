@@ -1,9 +1,28 @@
-from fastapi import FastAPI, HTTPException
+import os
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Security , Depends
+from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel, Field
 from datetime import date
 from sorgular import *
 
+load_dotenv()
+
 app = FastAPI()
+
+API_ANAHTAR_ADI = "X-API-KEY"
+SABIT_API_KEY = os.getenv("MY_API_KEY")
+
+api_key_header = APIKeyHeader(name=API_ANAHTAR_ADI, auto_error=True)
+
+def api_key_kontrol(gelen_key: str = Depends(api_key_header)):
+    if gelen_key != SABIT_API_KEY:
+        raise HTTPException(
+            status_code=403,
+            detail="Yetkisiz erişim: Yetersiz API anahtarı!"
+        )
+    return gelen_key
+
 
 class OdaSema(BaseModel):
     oda_numarasi: str
@@ -37,7 +56,7 @@ def rezervasyonlar_listele():
     return sonuc
 
 @app.post("/odalar")
-def oda_olustur(oda: OdaSema):
+def oda_olustur(oda: OdaSema , api_key: str = Depends(api_key_kontrol)):
 
     sonuc = yeni_oda_ekle(oda.oda_numarasi, oda.tip, oda.fiyat)
     return sonuc
@@ -52,13 +71,13 @@ def rezervasyon_olustur(rez: RezSema):
     return sonuc
 
 @app.post("/sezon_ekle")
-def sezon_olustur(sez: SezSema):
+def sezon_olustur(sez: SezSema , api_key: str = Depends(api_key_kontrol)):
     sonuc = sezon_ekle(sez.sezon_adi, sez.baslangic_tarihi, sez.bitis_tarihi, sez.fiyat_carpani)
     if "hata" in sonuc:
         raise HTTPException(status_code=400, detail=sonuc["hata"])
     return sonuc
 
 @app.get("/sezonlar")
-def sezonlar_listele():
+def sezonlar_listele(api_key: str = Depends(api_key_kontrol)):
     sonuc = tum_sezonları_getir()
     return sonuc
