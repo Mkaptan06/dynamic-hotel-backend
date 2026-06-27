@@ -25,7 +25,7 @@ def api_key_kontrol(gelen_key: str = Depends(api_key_header)):
 
 
 class OdaSema(BaseModel):
-    oda_numarasi: str
+    oda_numarasi: int
     tip: str
     fiyat: float
 
@@ -73,11 +73,41 @@ def rezervasyon_olustur(rez: RezSema):
 @app.post("/sezon_ekle")
 def sezon_olustur(sez: SezSema , api_key: str = Depends(api_key_kontrol)):
     sonuc = sezon_ekle(sez.sezon_adi, sez.baslangic_tarihi, sez.bitis_tarihi, sez.fiyat_carpani)
+
     if "hata" in sonuc:
         raise HTTPException(status_code=400, detail=sonuc["hata"])
+    
     return sonuc
 
 @app.get("/sezonlar")
 def sezonlar_listele(api_key: str = Depends(api_key_kontrol)):
     sonuc = tum_sezonları_getir()
+
+    if "hata" in sonuc:
+        raise HTTPException(status_code=400, detail=sonuc["hata"])
+    
+    return sonuc
+
+@app.post("/check_in")
+def check_in(rezervasyon_id: int ,api_key: str = Depends(api_key_kontrol)):
+    sonuc = check_in_yap(rezervasyon_id)
+    if "hata" in sonuc:
+        raise HTTPException(status_code=400, detail=sonuc["hata"])
+
+    return sonuc
+
+@app.post("/check_out")
+def check_out(rezervasyon_id: int ,api_key: str = Depends(api_key_kontrol)):
+    sonuc = check_out_yap(rezervasyon_id)
+    if "hata" in sonuc:
+        raise HTTPException(status_code=400, detail=sonuc["hata"])
+
+    return sonuc
+
+@app.post("/check_clear")
+def check_clear(oda_id: int , api_key: str = Depends(api_key_kontrol)):
+    sonuc = check_clear_yap(oda_id)
+    if "hata" in sonuc:
+        raise HTTPException(status_code=400, detail=sonuc["hata"])
+
     return sonuc
