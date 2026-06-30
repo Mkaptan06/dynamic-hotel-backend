@@ -319,3 +319,57 @@ def check_clear_yap(oda_id):
     finally:
         cursor.close()
         baglanti.close()
+
+# Tarihe uygun odaları listeleme 
+def uygun_odalari_listeleme(giris_tarihi, cikis_tarihi):
+
+    baglanti = veri_tabanina_baglan()
+    if baglanti is None:
+        return {"hata": "Veri tabanına bağlanılamadı"}
+    
+    cursor = baglanti.cursor(dictionary=True)
+
+    try:
+
+        if giris_tarihi >= cikis_tarihi:
+            return {"hata": "Giriş tarihi, çıkış tarihinden önce olmalıdır."}
+        
+        sorgu = """ 
+        WITH RECURSIVE gunler AS (
+        SELECT %s AS GUN
+        UNION ALL
+        SELECT DATE_ADD(gun , INTERVAL 1 DAY)
+        FROM gunler
+        WHERE DATE_ADD(GUN, INTERVAL 1 DAY) < %s
+        ),
+        toplam_carpim_tablosu AS (
+        SELECT COALESCE (SUM(COALESCE(s.fiyat_carpani, 1.00)),0) AS toplam_carpan
+        FROM gunler g 
+        LEFT JOIN sezonlar s ON g.gun BETWEEN s.baslangic_tarihi AND s.bitis_tarihi
+        )
+        SELECT o.id, o.oda_numarasi, o.tip, (SELECT tct.toplam_carpan FROM toplam_carpim_tablosu tct ) * o.fiyat AS Fiyat
+        FROM odalar o 
+        LEFT JOIN (
+            SELECT DISTINCT oda_id
+            FROM rezervasyonlar
+            WHERE durum NOT IN ('CikisYapildi' , 'Iptal')
+                AND NOT (%s >= cikis_tarihi OR %s <= giris_tarihi)
+        ) AS dolu_odalar ON o.id  = dolu_odalar.oda_id
+        WHERE o.durum = 'Bos' AND dolu_odalar.oda_id IS NULL;
+        """ 
+
+        parametreler = (giris_tarihi, cikis_tarihi, giris_tarihi, cikis_tarihi)
+
+        cursor.execute(sorgu , tuple(str(x) if isinstance(x ,(date, datetime)) else x for x in parametreler)) 
+        uygun_odalar = cursor.fetchall()
+
+
+        return {"uygun_odalar": uygun_odalar}
+    
+    except mysql.connector.Error as e:
+        print(f"Check-clear sırasında hata {e}")
+        return {"hata": f" Veri tabanı hatası: {e}"}
+    
+    finally:
+        cursor.close()
+        baglanti.close()

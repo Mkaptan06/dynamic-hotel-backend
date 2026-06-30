@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Security , Depends
+from fastapi import FastAPI, HTTPException, Security , Depends , Query
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel, Field
 from datetime import date
@@ -110,4 +110,20 @@ def check_clear(oda_id: int , api_key: str = Depends(api_key_kontrol)):
     if "hata" in sonuc:
         raise HTTPException(status_code=400, detail=sonuc["hata"])
 
+    return sonuc
+
+@app.get("/uygun_odalar")
+def  uygun_odalari_getir(
+    giris_tarihi: date = Query(..., description="Giriş Tarihi (YYYY-MM-DD)"), 
+    cikis_tarihi: date = Query(..., description="Çıkış Tarihi (YYYY-MM-DD)")
+    ):
+
+    giris_str = giris_tarihi.strftime("%Y-%m-%d")
+    cikis_str = cikis_tarihi.strftime("%Y-%m-%d")
+
+    sonuc = uygun_odalari_listeleme(giris_str , cikis_str)
+
+    if "hata" in sonuc:
+        raise HTTPException(status_code=400, detail=sonuc["hata"])
+    
     return sonuc
