@@ -1,14 +1,22 @@
 import os
-from dotenv import load_dotenv
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Security , Depends , Query
 from fastapi.security.api_key import APIKeyHeader
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field , field_validator ,model_validator
 from datetime import date
+from database import asenkron_havuz_baslat, asenkron_havuz_kapat
 from sorgular import *
 
-load_dotenv()
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    
+    await asenkron_havuz_baslat()
+    yield
+    await asenkron_havuz_kapat()
+
+app = FastAPI(lifespan=lifespan)
+
 
 API_ANAHTAR_ADI = "X-API-KEY"
 SABIT_API_KEY = os.getenv("MY_API_KEY")
@@ -29,11 +37,25 @@ class OdaSema(BaseModel):
     tip: str
     fiyat: float
 
+    @field_validator('fiyat')
+    def fiyat_kontrolu(cls , v):
+        if v <= 0:
+            raise ValueError('Oda fiyatı 0 veya negatif olamaz.')
+        return v
+
 class RezSema(BaseModel):
     oda_id: int
     musteri_adi: str
     giris_tarihi: date
     cikis_tarihi: date
+
+    @model_validator(mode='after')
+    def tarih_kontrolu(self):
+        if self.giris_tarihi >= self.cikis_tarihi:
+            raise ValueError('Giriş tarihi, çıkış tarihinden önce olmalıdır.')
+        if self.giris_tarihi < date.today():
+            raise ValueError('Geçmiş bir tarihe rezervasyon yapılamaz.')
+        return self
 
 class SezSema(BaseModel):
     sezon_adi: str
@@ -42,28 +64,28 @@ class SezSema(BaseModel):
     fiyat_carpani: float
 
 @app.get("/")
-def ana_sayfa():
+async def ana_sayfa():
     return {"mesaj": "Antalya Otel Rezervasyon API'sine Hoş Geldiniz!"}
 
 @app.get("/odalar")
-def odalar_listele():
-    sonuc = tum_odaları_getir()
+async def odalar_listele():
+    sonuc = await tum_odaları_getir()
     return sonuc
 
 @app.get("/rezervasyonlar")
-def rezervasyonlar_listele():
-    sonuc = tum_rezervasyonlari_getir()
+async def rezervasyonlar_listele():
+    sonuc =await tum_rezervasyonlari_getir()
     return sonuc
 
 @app.post("/odalar")
-def oda_olustur(oda: OdaSema , api_key: str = Depends(api_key_kontrol)):
+async def oda_olustur(oda: OdaSema , api_key: str = Depends(api_key_kontrol)):
 
-    sonuc = yeni_oda_ekle(oda.oda_numarasi, oda.tip, oda.fiyat)
+    sonuc =await yeni_oda_ekle(oda.oda_numarasi, oda.tip, oda.fiyat)
     return sonuc
 
 @app.post("/rezervasyon_yap")
-def rezervasyon_olustur(rez: RezSema):
-    sonuc = rezervasyon_yap(rez.oda_id, rez.musteri_adi, rez.giris_tarihi, rez.cikis_tarihi )
+async def rezervasyon_olustur(rez: RezSema , api_key: str = Depends(api_key_kontrol)):
+    sonuc = await rezervasyon_yap(rez.oda_id, rez.musteri_adi, rez.giris_tarihi, rez.cikis_tarihi )
 
     if "hata" in sonuc:
         raise HTTPException(status_code=400, detail=sonuc["hata"])
@@ -71,8 +93,8 @@ def rezervasyon_olustur(rez: RezSema):
     return sonuc
 
 @app.post("/sezon_ekle")
-def sezon_olustur(sez: SezSema , api_key: str = Depends(api_key_kontrol)):
-    sonuc = sezon_ekle(sez.sezon_adi, sez.baslangic_tarihi, sez.bitis_tarihi, sez.fiyat_carpani)
+async def sezon_olustur(sez: SezSema , api_key: str = Depends(api_key_kontrol)):
+    sonuc = await sezon_ekle(sez.sezon_adi, sez.baslangic_tarihi, sez.bitis_tarihi, sez.fiyat_carpani)
 
     if "hata" in sonuc:
         raise HTTPException(status_code=400, detail=sonuc["hata"])
@@ -80,8 +102,8 @@ def sezon_olustur(sez: SezSema , api_key: str = Depends(api_key_kontrol)):
     return sonuc
 
 @app.get("/sezonlar")
-def sezonlar_listele(api_key: str = Depends(api_key_kontrol)):
-    sonuc = tum_sezonları_getir()
+async def sezonlar_listele(api_key: str = Depends(api_key_kontrol)):
+    sonuc =await tum_sezonları_getir()
 
     if "hata" in sonuc:
         raise HTTPException(status_code=400, detail=sonuc["hata"])
@@ -89,31 +111,31 @@ def sezonlar_listele(api_key: str = Depends(api_key_kontrol)):
     return sonuc
 
 @app.post("/check_in")
-def check_in(rezervasyon_id: int ,api_key: str = Depends(api_key_kontrol)):
-    sonuc = check_in_yap(rezervasyon_id)
+async def check_in(rezervasyon_id: int ,api_key: str = Depends(api_key_kontrol)):
+    sonuc =await check_in_yap(rezervasyon_id)
     if "hata" in sonuc:
         raise HTTPException(status_code=400, detail=sonuc["hata"])
 
     return sonuc
 
 @app.post("/check_out")
-def check_out(rezervasyon_id: int ,api_key: str = Depends(api_key_kontrol)):
-    sonuc = check_out_yap(rezervasyon_id)
+async def check_out(rezervasyon_id: int ,api_key: str = Depends(api_key_kontrol)):
+    sonuc =await check_out_yap(rezervasyon_id)
     if "hata" in sonuc:
         raise HTTPException(status_code=400, detail=sonuc["hata"])
 
     return sonuc
 
 @app.post("/check_clear")
-def check_clear(oda_id: int , api_key: str = Depends(api_key_kontrol)):
-    sonuc = check_clear_yap(oda_id)
+async def check_clear(oda_id: int , api_key: str = Depends(api_key_kontrol)):
+    sonuc =await check_clear_yap(oda_id)
     if "hata" in sonuc:
         raise HTTPException(status_code=400, detail=sonuc["hata"])
 
     return sonuc
 
 @app.get("/uygun_odalar")
-def  uygun_odalari_getir(
+async def  uygun_odalari_getir(
     giris_tarihi: date = Query(..., description="Giriş Tarihi (YYYY-MM-DD)"), 
     cikis_tarihi: date = Query(..., description="Çıkış Tarihi (YYYY-MM-DD)")
     ):
@@ -121,8 +143,7 @@ def  uygun_odalari_getir(
     giris_str = giris_tarihi.strftime("%Y-%m-%d")
     cikis_str = cikis_tarihi.strftime("%Y-%m-%d")
 
-    sonuc = uygun_odalari_listeleme(giris_str , cikis_str)
-
+    sonuc = await uygun_odalari_listeleme(giris_tarihi, cikis_tarihi)
     if "hata" in sonuc:
         raise HTTPException(status_code=400, detail=sonuc["hata"])
     

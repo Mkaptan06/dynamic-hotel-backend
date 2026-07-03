@@ -1,22 +1,33 @@
 import os
 from dotenv import load_dotenv
-import mysql.connector 
-from mysql.connector import Error
+import aiomysql  
 
 load_dotenv()
 
-# MySQL veri tabanına bağlama
 
-def veri_tabanina_baglan():
-    try:
-        baglanti = mysql.connector.connect(
-            host= os.getenv("DB_HOST"),
-            user = os.getenv("DB_USER"),
-            password = os.getenv("DB_PASSWORD"),
-            database = os.getenv("DB_NAME")
+db_pool = None
+
+
+async def asenkron_havuz_baslat():
+    global db_pool
+    if db_pool is None:
+        db_pool = await aiomysql.create_pool(
+            host=os.getenv("DB_HOST"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            db=os.getenv("DB_NAME"),
+            minsize=1,
+            maxsize=5,
+            autocommit=True
         )
-        if baglanti.is_connected():
-            return baglanti
-    except Error as e:
-        print("MySQL bağlantı hatası")
-        return None
+
+
+async def asenkron_havuz_kapat():
+    global db_pool
+    if db_pool:
+        db_pool.close()
+        await db_pool.wait_closed()
+
+
+def veri_tabani_havuzu_getir():
+    return db_pool

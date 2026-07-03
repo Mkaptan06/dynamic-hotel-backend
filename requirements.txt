@@ -1,4 +1,6 @@
 fastapi==0.111.0
 mysql-connector-python==8.4.0
 
+aiomysql==0.2.0
+
 uvicorn main:app --reload
